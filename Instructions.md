@@ -3,8 +3,7 @@
 > **Stack:** Microsoft Agent Framework 1.0 · Python 3.12 · Azure OpenAI (exclusive)
 > **Protocols:** MCP Streamable HTTP · Streamable SSE Sessions · A2A
 > **Scope:** Autonomous end-to-end Data Science and Generative AI workloads
-> **Author perspective:** Senior AI Architect and Engineer
-> **Last updated:** May 2026
+
 
 ---
 
