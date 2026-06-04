@@ -1,0 +1,107 @@
+version: "3.9"
+
+# MAF DS Agent — Docker Compose
+# Runs all three MCP servers as isolated containers.
+#
+# Usage:
+#   docker compose up          # start all
+#   docker compose up tracking # start only tracking server
+#   docker compose down -v     # stop + remove volumes
+#   docker compose logs -f     # follow all logs
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # ── Tracking MCP (port 8100) ─────────────────────────────────────
+  tracking:
+    build:
+      context: .
+      dockerfile: Dockerfile.tracking
+    image: maf-ds-tracking:latest
+    container_name: maf-tracking
+    ports:
+      - "${TRACKING_MCP_PORT:-8100}:8100"
+    environment:
+      TRACKING_DB_PATH: /app/data/tracking.db
+      TRACKING_MCP_PORT: "8100"
+    volumes:
+      - tracking-data:/app/data
+      - tracking-logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8100/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    logging: *default-logging
+    networks:
+      - mcp-net
+
+  # ── DS Tools MCP (port 8101) ─────────────────────────────────────
+  ds_tools:
+    build:
+      context: .
+      dockerfile: Dockerfile.ds_tools
+    image: maf-ds-tools:latest
+    container_name: maf-ds-tools
+    ports:
+      - "${DS_TOOLS_MCP_PORT:-8101}:8101"
+    environment:
+      DS_TOOLS_MCP_PORT: "8101"
+      ARTEFACT_BASE_DIR: /app/data/artefacts
+    volumes:
+      - ds-tools-data:/app/data
+      - ds-tools-logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8101/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    logging: *default-logging
+    networks:
+      - mcp-net
+
+  # ── Bug Log MCP (port 8102) ──────────────────────────────────────
+  bug_log:
+    build:
+      context: .
+      dockerfile: Dockerfile.bug_log
+    image: maf-bug-log:latest
+    container_name: maf-bug-log
+    ports:
+      - "${BUG_LOG_MCP_PORT:-8102}:8102"
+    environment:
+      BUG_LOG_DB_PATH: /app/data/bug_log.db
+      BUG_LOG_MCP_PORT: "8102"
+    volumes:
+      - bug-log-data:/app/data
+      - bug-log-logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8102/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    logging: *default-logging
+    networks:
+      - mcp-net
+
+networks:
+  mcp-net:
+    driver: bridge
+
+volumes:
+  tracking-data:
+  tracking-logs:
+  ds-tools-data:
+  ds-tools-logs:
+  bug-log-data:
+  bug-log-logs:
