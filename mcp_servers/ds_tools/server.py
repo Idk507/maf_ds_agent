@@ -30,7 +30,7 @@ load_dotenv()
 
 PORT = int(os.environ.get("DS_TOOLS_MCP_PORT", "8101"))
 
-mcp = FastMCP("DSToolsMCP", stateless_http=True)
+mcp = FastMCP("DSToolsMCP")
 
 # ── read_file ────────────────────────────────────────────────────────
 
@@ -384,13 +384,12 @@ async def verify_stage(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # stateless_http=True means no persistent session_manager needed,
-    # but we still need to start/stop the mcp app properly.
-    yield
+    async with mcp._lifespan_manager():
+        yield
 
 
 app = FastAPI(title="DS Tools MCP Server", lifespan=lifespan)
-mcp_app = mcp.streamable_http_app()
+mcp_app = mcp.http_app(transport="streamable-http", stateless_http=True)
 app.mount("/mcp", mcp_app)
 
 
