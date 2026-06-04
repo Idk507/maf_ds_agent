@@ -100,8 +100,11 @@ async def run_ralph_loop(
         try:
             response = await agent.run(
                 current_prompt,
-                run_id=run_id,
-                stage_name=stage_name,
+                function_invocation_kwargs={
+                    "run_id": run_id,
+                    "stage_name": stage_name,
+                    "session_state": session_state,
+                },
             )
         except Exception as exc:
             logger.error(
@@ -115,7 +118,7 @@ async def run_ralph_loop(
             )
             continue
 
-        response_text: str = str(response) if response is not None else ""
+        response_text: str = response.text if response is not None else ""
 
         # ── Check for DONE tag ────────────────────────────────────────
         done_stage = _extract_done_stage(response_text)
@@ -147,13 +150,11 @@ async def run_ralph_loop(
                 try:
                     await tracking_mcp_client.call_tool(
                         "record_checkpoint",
-                        {
-                            "run_id": run_id,
-                            "stage_name": stage_name,
-                            "iteration": iteration,
-                            "status": "passed",
-                            "notes": f"Ralph Loop: all criteria satisfied in {iteration} iteration(s)",
-                        },
+                        run_id=run_id,
+                        stage_name=stage_name,
+                        iteration=iteration,
+                        status="passed",
+                        notes=f"Ralph Loop: all criteria satisfied in {iteration} iteration(s)",
                     )
                 except Exception as track_exc:
                     logger.warning("ralph_loop.tracking_error: %s", track_exc)
@@ -175,13 +176,11 @@ async def run_ralph_loop(
             try:
                 await tracking_mcp_client.call_tool(
                     "record_checkpoint",
-                    {
-                        "run_id": run_id,
-                        "stage_name": stage_name,
-                        "iteration": iteration,
-                        "status": "failed",
-                        "notes": f"{len(failures)} assertion(s) failed",
-                    },
+                    run_id=run_id,
+                    stage_name=stage_name,
+                    iteration=iteration,
+                    status="failed",
+                    notes=f"{len(failures)} assertion(s) failed",
                 )
             except Exception:
                 pass
@@ -243,13 +242,11 @@ async def _verify_stage(
         try:
             result = await ds_tools_mcp_client.call_tool(
                 "verify_stage",
-                {
-                    "run_id": run_id,
-                    "stage_name": stage_name,
-                    "session_state_json": json.dumps(session_state),
-                },
+                run_id=run_id,
+                stage_name=stage_name,
+                session_state_json=json.dumps(session_state),
             )
-            result_text = str(result)
+            result_text = result if isinstance(result, str) else str(result)
             parsed = json.loads(result_text)
             return parsed.get("failures", [])
         except Exception as exc:
