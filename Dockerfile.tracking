@@ -1,0 +1,41 @@
+# Dockerfile.tracking — Tracking MCP Server (port 8100)
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# System deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python deps — only what tracking server needs
+COPY pyproject.toml .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir \
+        fastmcp \
+        fastapi \
+        "uvicorn[standard]" \
+        python-dotenv \
+        pydantic-settings \
+        httpx \
+        rich
+
+# Copy source
+COPY mcp_servers/tracking/ mcp_servers/tracking/
+COPY mcp_servers/__init__.py mcp_servers/
+COPY config/ config/
+
+# Create data dir for SQLite
+RUN mkdir -p data/tracking logs
+
+ENV TRACKING_DB_PATH=/app/data/tracking.db
+ENV TRACKING_MCP_PORT=8100
+
+EXPOSE 8100
+
+HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=3 \
+    CMD curl -f http://localhost:8100/health || exit 1
+
+CMD ["uvicorn", "mcp_servers.tracking.server:app", \
+     "--host", "0.0.0.0", "--port", "8100", \
+     "--log-level", "info", "--no-access-log"]
