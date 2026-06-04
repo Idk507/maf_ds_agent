@@ -22,7 +22,7 @@ import time
 from collections import defaultdict
 from typing import Any, Callable, Awaitable
 
-from agent_framework import AgentMiddleware, AgentRunContext
+from agent_framework import AgentMiddleware, AgentContext
 
 logger = logging.getLogger(__name__)
 
@@ -65,30 +65,20 @@ class LoggingMiddleware(AgentMiddleware):
 
     async def process(
         self,
-        context: AgentRunContext,
-        next_middleware: Callable[[AgentRunContext], Awaitable[Any]],
-    ) -> Any:
-        agent_name = getattr(context, "agent_name", "unknown")
-        run_id = (context.kwargs or {}).get("run_id", "none")
+        context: AgentContext,
+        call_next: Callable[[], Awaitable[None]],
+    ) -> None:
+        agent_name = context.agent.name if context.agent else "unknown"
+        run_id = (context.function_invocation_kwargs or {}).get("run_id", "none")
         start = time.monotonic()
-        logger.info(
-            "agent.start",
-            extra={"agent": agent_name, "run_id": run_id},
-        )
+        logger.info("agent.start %s run_id=%s", agent_name, run_id)
         try:
-            result = await next_middleware(context)
+            await call_next()
             elapsed = time.monotonic() - start
-            logger.info(
-                "agent.done",
-                extra={"agent": agent_name, "run_id": run_id, "elapsed_s": round(elapsed, 2)},
-            )
-            return result
+            logger.info("agent.done %s run_id=%s elapsed=%.2fs", agent_name, run_id, elapsed)
         except Exception as exc:
             elapsed = time.monotonic() - start
-            logger.error(
-                "agent.error",
-                extra={"agent": agent_name, "run_id": run_id, "elapsed_s": round(elapsed, 2), "error": str(exc)},
-            )
+            logger.error("agent.error %s run_id=%s elapsed=%.2fs error=%s", agent_name, run_id, elapsed, exc)
             raise
 
 
@@ -108,23 +98,20 @@ class RateLimitMiddleware(AgentMiddleware):
 
     async def process(
         self,
-        context: AgentRunContext,
-        next_middleware: Callable[[AgentRunContext], Awaitable[Any]],
-    ) -> Any:
-        agent_name = getattr(context, "agent_name", "unknown")
+        context: AgentContext,
+        call_next: Callable[[], Awaitable[None]],
+    ) -> None:
+        agent_name = context.agent.name if context.agent else "unknown"
         now = time.monotonic()
         window = self._window[agent_name]
         # Evict timestamps older than 60 s
         self._window[agent_name] = [t for t in window if now - t < 60]
         if len(self._window[agent_name]) >= self._cpm:
             sleep_for = 60 - (now - self._window[agent_name][0]) + 0.1
-            logger.warning(
-                "rate_limit.sleeping",
-                extra={"agent": agent_name, "sleep_s": round(sleep_for, 1)},
-            )
+            logger.warning("rate_limit.sleeping agent=%s sleep_s=%.1f", agent_name, sleep_for)
             await asyncio.sleep(max(0, sleep_for))
         self._window[agent_name].append(time.monotonic())
-        return await next_middleware(context)
+        await call_next()
 
 
 # ── SafetyMiddleware ──────────────────────────────────────────────────
@@ -142,11 +129,11 @@ class SafetyMiddleware(AgentMiddleware):
 
     async def process(
         self,
-        context: AgentRunContext,
-        next_middleware: Callable[[AgentRunContext], Awaitable[Any]],
-    ) -> Any:
+        context: AgentContext,
+        call_next: Callable[[], Awaitable[None]],
+    ) -> None:
         # Inspect the last user message if present
-        messages = getattr(context, "messages", []) or []
+        messages = context.messages or []
         for msg in messages[-2:]:
             content = getattr(msg, "content", "") or ""
             if isinstance(content, str):
@@ -156,7 +143,7 @@ class SafetyMiddleware(AgentMiddleware):
                         raise ValueError(
                             f"SafetyMiddleware: blocked unsafe pattern '{pattern}' in generated code."
                         )
-        return await next_middleware(context)
+        await call_next()
 
 
 # ── RetryMiddleware ───────────────────────────────────────────────────
@@ -182,13 +169,14 @@ class RetryMiddleware(AgentMiddleware):
 
     async def process(
         self,
-        context: AgentRunContext,
-        next_middleware: Callable[[AgentRunContext], Awaitable[Any]],
-    ) -> Any:
+        context: AgentContext,
+        call_next: Callable[[], Awaitable[None]],
+    ) -> None:
         last_exc: Exception | None = None
         for attempt in range(self._max_retries + 1):
             try:
-                return await next_middleware(context)
+                await call_next()
+                return
             except ValueError:
                 raise  # Logic errors are not retried
             except Exception as exc:
@@ -196,10 +184,7 @@ class RetryMiddleware(AgentMiddleware):
                 if attempt == self._max_retries:
                     break
                 delay = self._base_delay * (2 ** attempt) + (time.monotonic() % 0.5)
-                logger.warning(
-                    "retry.sleeping",
-                    extra={"attempt": attempt + 1, "delay_s": round(delay, 2), "error": str(exc)},
-                )
+                logger.warning("retry.sleeping attempt=%d delay=%.2fs error=%s", attempt + 1, delay, exc)
                 await asyncio.sleep(delay)
         raise last_exc  # type: ignore[misc]
 
@@ -215,11 +200,11 @@ class TelemetryMiddleware(AgentMiddleware):
 
     async def process(
         self,
-        context: AgentRunContext,
-        next_middleware: Callable[[AgentRunContext], Awaitable[Any]],
-    ) -> Any:
-        agent_name = getattr(context, "agent_name", "unknown")
-        run_id = (context.kwargs or {}).get("run_id", "none")
+        context: AgentContext,
+        call_next: Callable[[], Awaitable[None]],
+    ) -> None:
+        agent_name = context.agent.name if context.agent else "unknown"
+        run_id = (context.function_invocation_kwargs or {}).get("run_id", "none")
 
         try:
             from opentelemetry import trace
@@ -227,14 +212,14 @@ class TelemetryMiddleware(AgentMiddleware):
             tracer = trace.get_tracer("ds_agent")
             with tracer.start_as_current_span(
                 name=f"agent.{agent_name}",
-                attributes={"run_id": run_id, "agent": agent_name},
+                attributes={"run_id": str(run_id), "agent": str(agent_name)},
             ):
-                return await next_middleware(context)
+                await call_next()
         except ImportError:
-            return await next_middleware(context)
+            await call_next()
         except Exception:
             # Never let telemetry break the pipeline
-            return await next_middleware(context)
+            await call_next()
 
 
 # ── Middleware stack factories ─────────────────────────────────────────
