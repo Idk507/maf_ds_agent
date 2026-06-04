@@ -99,7 +99,7 @@ _init_db()
 
 # ── FastMCP Server ──────────────────────────────────────────────────
 
-mcp = FastMCP("BugLogMCP", stateless_http=False)
+mcp = FastMCP("BugLogMCP")
 
 
 def _now() -> str:
@@ -280,12 +280,12 @@ async def query_unresolved_bugs(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async with mcp.session_manager:
+    async with mcp._lifespan_manager():
         yield
 
 
 app = FastAPI(title="Bug Log MCP Server", lifespan=lifespan)
-mcp_app = mcp.streamable_http_app()
+mcp_app = mcp.http_app(transport="streamable-http", stateless_http=False)
 app.mount("/mcp", mcp_app)
 
 
