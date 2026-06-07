@@ -1,0 +1,20 @@
+{
+  "features": [
+    "fixed acidity",
+    "volatile acidity",
+    "citric acid",
+    "residual sugar",
+    "chlorides",
+    "free sulfur dioxide",
+    "total sulfur dioxide",
+    "density",
+    "pH",
+    "sulphates",
+    "alcohol"
+  ],
+  "target": "quality",
+  "task_type": "regression",
+  "train_rows": 1279,
+  "test_rows": 320,
+  "separator": ","
+}
