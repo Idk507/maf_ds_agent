@@ -17,7 +17,6 @@ import subprocess
 import sys
 import tempfile
 import time
-from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
 
@@ -39,6 +38,8 @@ mcp = FastMCP("DSToolsMCP")
 async def read_file(
     file_path: Annotated[str, Field(description="Absolute or relative path to the file to read.")],
     sample_rows: Annotated[int, Field(description="For tabular files: number of rows to return in preview. 0 = no preview.")] = 5,
+    run_id: Annotated[str, Field(description="Pipeline run identifier (ignored by this tool).")] = "",
+    stage_name: Annotated[str, Field(description="Pipeline stage name (ignored by this tool).")] = "",
 ) -> str:
     """
     Detect the file type (3-layer: Magika → filetype → heuristics) and read it.
@@ -65,6 +66,7 @@ async def execute_code(
     run_id: Annotated[str, Field(description="Pipeline run identifier.")],
     timeout_seconds: Annotated[int, Field(description="Maximum execution time in seconds.")] = 300,
     env_vars: Annotated[str, Field(description="JSON-encoded dict of extra environment variables to inject.")] = "{}",
+    stage_name: Annotated[str, Field(description="Pipeline stage name (ignored by this tool).")] = "",
 ) -> str:
     """
     Execute Python code in a fresh subprocess. Returns stdout, stderr, exit_code.
@@ -120,6 +122,8 @@ async def get_sample(
     file_path: Annotated[str, Field(description="Path to a parquet or CSV file.")],
     n_rows: Annotated[int, Field(description="Number of rows to sample.")] = 10,
     random_state: Annotated[int, Field(description="Random seed for reproducibility.")] = 42,
+    run_id: Annotated[str, Field(description="Pipeline run identifier (ignored by this tool).")] = "",
+    stage_name: Annotated[str, Field(description="Pipeline stage name (ignored by this tool).")] = "",
 ) -> str:
     """Return a random sample of rows from a tabular file as a JSON string."""
     import pandas as pd
@@ -148,6 +152,7 @@ async def write_output(
     sub_dir: Annotated[str, Field(description="Sub-directory under outputs/{run_id}/, e.g. 'eda' or 'clean'.")],
     filename: Annotated[str, Field(description="File name to write.")],
     content: Annotated[str, Field(description="Text content to write to the file.")],
+    stage_name: Annotated[str, Field(description="Pipeline stage name (ignored by this tool).")] = "",
 ) -> str:
     """Write text content to a file inside the run's output directory. Returns the full path."""
     output_dir = Path(os.environ.get("OUTPUT_BASE_DIR", "outputs")) / run_id / sub_dir
@@ -165,6 +170,8 @@ async def search_docs(
     library_name: Annotated[str, Field(description="Library name to search documentation for.")],
     query: Annotated[str, Field(description="Search query about the library.")],
     error_message: Annotated[str, Field(description="The error message for context (used in the Browser-Use task).")] = "",
+    run_id: Annotated[str, Field(description="Pipeline run identifier (ignored by this tool).")] = "",
+    stage_name: Annotated[str, Field(description="Pipeline stage name (ignored by this tool).")] = "",
 ) -> str:
     """
     Search library documentation using Browser-Use.
@@ -218,6 +225,8 @@ async def search_docs(
 async def web_research(
     query: Annotated[str, Field(description="Search query string.")],
     context: Annotated[str, Field(description="Caller context: 'debug_attempt_3', 'feature_eng', 'model_selection', or other.")] = "",
+    run_id: Annotated[str, Field(description="Pipeline run identifier (ignored by this tool).")] = "",
+    stage_name: Annotated[str, Field(description="Pipeline stage name (ignored by this tool).")] = "",
 ) -> str:
     """
     DuckDuckGo deep research. Returns top 10 results as JSON.
@@ -247,6 +256,7 @@ async def web_research(
 async def embed_text(
     text: Annotated[str, Field(description="Text to embed (max 8,192 tokens).")],
     run_id: Annotated[str, Field(description="Pipeline run identifier (for attribution).")],
+    stage_name: Annotated[str, Field(description="Pipeline stage name (ignored by this tool).")] = "",
 ) -> str:
     """
     Embed text using the Azure OpenAI embedding deployment.
@@ -275,6 +285,8 @@ async def embed_text(
 async def semantic_search(
     query: Annotated[str, Field(description="Natural language query to search the semantic memory.")],
     top_k: Annotated[int, Field(description="Number of most similar results to return.")] = 5,
+    run_id: Annotated[str, Field(description="Pipeline run identifier (ignored by this tool).")] = "",
+    stage_name: Annotated[str, Field(description="Pipeline stage name (ignored by this tool).")] = "",
 ) -> str:
     """
     Search the semantic memory index for the most similar entries.
@@ -380,16 +392,10 @@ async def verify_stage(
 
 
 # ── FastAPI Application ─────────────────────────────────────────────
+# mcp_app must be created before FastAPI so its lifespan can be used.
 
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    async with mcp._lifespan_manager():
-        yield
-
-
-app = FastAPI(title="DS Tools MCP Server", lifespan=lifespan)
 mcp_app = mcp.http_app(transport="streamable-http", stateless_http=True)
+app = FastAPI(title="DS Tools MCP Server", lifespan=mcp_app.lifespan)
 app.mount("/mcp", mcp_app)
 
 
