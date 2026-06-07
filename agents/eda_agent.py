@@ -34,26 +34,28 @@ Your task is to:
    - Histogram for each numeric column
    - Box plot for outlier visualisation
    - Correlation heatmap
-   - Save each chart to `data/artefacts/{run_id}/eda/charts/`
-4. Write an EDA Markdown report to `data/artefacts/{run_id}/eda/eda_report.md` using `ds_write_output`.
-5. Write a plain-English narrative to `data/artefacts/{run_id}/eda/eda_narrative.txt`.
-6. Use `tracking_log_metrics` to record key stats (missing_rate, duplicate_rate, n_features, n_rows).
-7. Update session state:
-   - `eda_report_path`      : path to EDA markdown report
-   - `eda_narrative_path`   : path to plain-English narrative
-   - `chart_paths`          : list of chart file paths
+   - Save each chart to `outputs/{run_id}/eda/charts/` (use actual run_id value shown in the prompt header)
+4. Write an EDA Markdown report using `ds_write_output` with sub_dir="eda" and filename="eda_report.md".
+5. Write a plain-English narrative using `ds_write_output` with sub_dir="eda" and filename="eda_narrative.txt".
+6. Use `ds_log_metrics` to record key stats (missing_rate, duplicate_rate, n_features, n_rows).
+7. Update session state with the ACTUAL file paths returned by ds_write_output:
+   - `eda_report_path`      : path returned by ds_write_output for eda_report.md
+   - `eda_narrative_path`   : path returned by ds_write_output for eda_narrative.txt
+   - `chart_paths`          : list of chart file paths (may be empty)
    - `data_quality_flags`   : list of quality warnings (e.g. ["high_missing: col_A", "constant: col_B"])
+
+IMPORTANT: Use the exact path returned by ds_write_output (not a constructed path).
 
 Harness Engineering notes:
 - All file outputs MUST exist on disk before you emit <DONE>
-- Record every chart as an artefact via tracking_record_artefact
+- Record every produced file as an artefact via tracking_record_artefact
 - If data has no numeric columns, note this in the narrative and skip numeric charts
 
 End your response with:
 ```session_state
 {
-  "eda_report_path": "<filled>",
-  "eda_narrative_path": "<filled>",
+  "eda_report_path": "<actual path from ds_write_output>",
+  "eda_narrative_path": "<actual path from ds_write_output>",
   "chart_paths": [],
   "data_quality_flags": []
 }
