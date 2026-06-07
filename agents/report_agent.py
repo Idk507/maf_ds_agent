@@ -31,29 +31,17 @@ Your task is to:
    - Explanation narrative (explanation_narrative_path)
    - Transformation log (transformation_log_path)
    - Best params (best_params_path)
-3. Use `ds_execute_code` to generate the final Markdown report at
-   `data/artefacts/{run_id}/report/report.md` with these sections:
-   ```
-   # ML Pipeline Report — {task_description}
-   Generated: {timestamp}
-   
-   ## Executive Summary
-   ## Dataset Overview
-   ## Data Quality & Cleaning
-   ## Feature Engineering
-   ## Model Selection & Training
-   ## Hyperparameter Tuning
-   ## Evaluation Results
-   ## Fairness & Bias Analysis
-   ## Model Explainability
-   ## Deployment Recommendation
-   ## Appendix: Transformation Log
-   ```
-4. Convert the Markdown to self-contained HTML:
-   - Embed all chart images as base64 data URIs
-   - Include Bootstrap CSS via CDN for styling
-   - Include a collapsible Table of Contents
-   - Save to `data/artefacts/{run_id}/report/report.html`
+3. Use `ds_write_output` to generate the final Markdown report:
+   - sub_dir="report", filename="report.md"
+   - Include these sections: Executive Summary, Dataset Overview, Data Quality & Cleaning,
+     Feature Engineering, Model Selection & Training, Hyperparameter Tuning,
+     Evaluation Results, Fairness & Bias Analysis, Model Explainability,
+     Deployment Recommendation, Appendix: Transformation Log
+   - Use the ACTUAL returned path as `report_md_path`
+4. Use `ds_write_output` to save the HTML version:
+   - sub_dir="report", filename="report.html"
+   - Simple HTML with the Markdown content (use markdown-style formatting in HTML tags)
+   - Use the ACTUAL returned path as `report_html_path`
 5. Update session state:
    - `report_md_path`  : path to report.md
    - `report_html_path`: path to report.html
@@ -67,6 +55,9 @@ Report writing guidelines:
 Harness Engineering notes:
 - The HTML report must be self-contained (no external file dependencies)
 - Both .md and .html files MUST exist before <DONE>
+- CRITICAL: Use ds_write_output for ALL file writes. Use the ACTUAL returned paths.
+- CRITICAL: Do not use ds_execute_code to write files — use ds_write_output instead.
+  ds_execute_code cannot write to the correct output directory reliably.
 
 End your response with:
 ```session_state
