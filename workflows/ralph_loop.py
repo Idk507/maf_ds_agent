@@ -213,17 +213,43 @@ async def run_ralph_loop(
 # ── Helpers ───────────────────────────────────────────────────────────
 
 
+_PLACEHOLDER_VALUES = {"<filled>", "FILL_ME", "<FILL_ME>", "<path>", "<value>", "?", "..."}
+
+
+def _is_placeholder(v: Any) -> bool:
+    """Return True if v is a placeholder value that should not overwrite real state."""
+    if isinstance(v, str):
+        return not v or v in _PLACEHOLDER_VALUES
+    if isinstance(v, list):
+        # A list is a placeholder if all its items are placeholder strings
+        return bool(v) and all(isinstance(item, str) and item in _PLACEHOLDER_VALUES for item in v)
+    if isinstance(v, dict):
+        return not v  # empty dict
+    return False
+
+
 def _merge_session_state_from_response(response_text: str, session_state: dict) -> None:
     """
     Look for a JSON block tagged ```session_state ... ``` in the agent's response.
     Merge any keys found into session_state (agent convention for updating shared state).
+
+    Skips placeholder values (e.g. "<filled>", ["<filled>"]) to avoid overwriting values
+    that were already correctly set via set_session_state tool calls during agent.run().
     """
     pattern = re.compile(r"```session_state\s*(.*?)```", re.DOTALL)
     for match in pattern.finditer(response_text):
         try:
             update = json.loads(match.group(1).strip())
-            if isinstance(update, dict):
-                session_state.update(update)
+            if not isinstance(update, dict):
+                continue
+            for k, v in update.items():
+                # Skip placeholder values — set_session_state tool calls already set real values
+                if _is_placeholder(v):
+                    continue
+                # Skip empty containers that would overwrite real values already in state
+                if isinstance(v, (dict, list)) and not v and session_state.get(k):
+                    continue
+                session_state[k] = v
         except json.JSONDecodeError:
             pass
 
