@@ -13,7 +13,6 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
-from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated
@@ -137,6 +136,8 @@ async def record_repair_attempt(
     patched_code: Annotated[str, Field(description="The patched code snippet, or empty string if no patch.")],
     success: Annotated[bool, Field(description="True if the patch resolved the error.")],
     error_after: Annotated[str, Field(description="New error after patch, or empty string if success.")] = "",
+    run_id: Annotated[str, Field(description="Pipeline run identifier (ignored by this tool).")] = "",
+    stage_name: Annotated[str, Field(description="Pipeline stage (ignored by this tool).")] = "",
 ) -> str:
     """Record a Debug Agent repair attempt for a bug."""
     conn = _get_conn()
@@ -155,6 +156,8 @@ async def record_repair_attempt(
 async def mark_bug_resolved(
     bug_id: Annotated[str, Field(description="Bug identifier.")],
     resolution_note: Annotated[str, Field(description="Short description of how the bug was resolved.")],
+    run_id: Annotated[str, Field(description="Pipeline run identifier (ignored by this tool).")] = "",
+    stage_name: Annotated[str, Field(description="Pipeline stage (ignored by this tool).")] = "",
 ) -> str:
     """Mark a bug as resolved."""
     conn = _get_conn()
@@ -194,6 +197,7 @@ async def record_tool_call(
     tool_name: Annotated[str, Field(description="MCP tool name called.")],
     args_summary: Annotated[str, Field(description="JSON-encoded summary of arguments (no secrets).")],
     result_summary: Annotated[str, Field(description="One-line summary of the result.")] = "",
+    stage_name: Annotated[str, Field(description="Pipeline stage (ignored by this tool).")] = "",
 ) -> str:
     """Record a tool call for rate-limit tracking and audit."""
     import time
@@ -248,6 +252,8 @@ async def query_bug_history(
 async def query_bug_patterns(
     error_type: Annotated[str, Field(description="Exception class to look up patterns for.")],
     limit: Annotated[int, Field(description="Maximum number of past bugs to return.")] = 10,
+    run_id: Annotated[str, Field(description="Pipeline run identifier (ignored by this tool).")] = "",
+    stage_name: Annotated[str, Field(description="Pipeline stage (ignored by this tool).")] = "",
 ) -> str:
     """Return past bugs of the same error type with their resolutions (for pattern matching)."""
     conn = _get_conn()
@@ -264,6 +270,7 @@ async def query_bug_patterns(
 @mcp.tool()
 async def query_unresolved_bugs(
     run_id: Annotated[str, Field(description="Pipeline run identifier.")],
+    stage_name: Annotated[str, Field(description="Pipeline stage (ignored by this tool).")] = "",
 ) -> str:
     """Return all unresolved bugs for a run."""
     conn = _get_conn()
@@ -276,16 +283,10 @@ async def query_unresolved_bugs(
 
 
 # ── FastAPI Application ─────────────────────────────────────────────
+# mcp_app must be created before FastAPI so its lifespan can be used.
 
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    async with mcp._lifespan_manager():
-        yield
-
-
-app = FastAPI(title="Bug Log MCP Server", lifespan=lifespan)
 mcp_app = mcp.http_app(transport="streamable-http", stateless_http=False)
+app = FastAPI(title="Bug Log MCP Server", lifespan=mcp_app.lifespan)
 app.mount("/mcp", mcp_app)
 
 
