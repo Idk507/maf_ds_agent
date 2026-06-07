@@ -24,33 +24,61 @@ from config.settings import get_settings
 
 settings = get_settings()
 
+# ── Framework-injected kwargs that MCP servers must not receive ────────
+# agent.run(function_invocation_kwargs={...}) injects these into EVERY
+# tool call, including MCP tools. FastMCP rejects unknown kwargs via
+# Pydantic validation (isError=True). Strip them before forwarding.
+_FRAMEWORK_KWARGS: frozenset[str] = frozenset({"session_state"})
+
+
+class _FilteredMCPTool(MCPStreamableHTTPTool):
+    """MCPStreamableHTTPTool that strips agent-framework runtime kwargs.
+
+    agent.run(function_invocation_kwargs={"run_id": ..., "stage_name": ...,
+    "session_state": ...}) injects those kwargs into every tool call.
+    Local tools handle them via FunctionInvocationContext; MCP tools reject
+    them with a Pydantic ValidationError → isError=True → consecutive errors.
+    This subclass intercepts call_tool and removes those keys before the MCP
+    protocol call, so the MCP server only sees its declared parameters.
+    """
+
+    async def call_tool(self, tool_name: str, **kwargs: Any) -> Any:
+        # Only strip session_state — it's a large Python dict that no MCP tool
+        # accepts and would cause Pydantic validation errors on every call.
+        # run_id and stage_name ARE declared parameters on several MCP tools
+        # (write_output, execute_code, log_metrics, verify_stage, etc.) so they
+        # must be passed through. When those tools don't need them, optional
+        # dummy params (default="") are declared in the server to absorb them.
+        clean = {k: v for k, v in kwargs.items() if k not in _FRAMEWORK_KWARGS}
+        return await super().call_tool(tool_name, **clean)
+
 
 # ── MCP tool factories ────────────────────────────────────────────────
-# Returns a new MCPStreamableHTTPTool instance each time (one per agent).
+# Returns a new _FilteredMCPTool instance each time (one per agent).
 # Instances are lightweight; actual HTTP sessions are established on first use.
 
 
-def make_tracking_mcp() -> MCPStreamableHTTPTool:
+def make_tracking_mcp() -> _FilteredMCPTool:
     """Create a Tracking MCP tool (port 8100) — audit trail, checkpoints."""
-    return MCPStreamableHTTPTool(
+    return _FilteredMCPTool(
         name="tracking_mcp",
         url=settings.tracking_mcp_url,
         tool_name_prefix="tracking",
     )
 
 
-def make_ds_tools_mcp() -> MCPStreamableHTTPTool:
+def make_ds_tools_mcp() -> _FilteredMCPTool:
     """Create a DS Tools MCP tool (port 8101) — data science operations."""
-    return MCPStreamableHTTPTool(
+    return _FilteredMCPTool(
         name="ds_tools_mcp",
         url=settings.ds_tools_mcp_url,
         tool_name_prefix="ds",
     )
 
 
-def make_bug_log_mcp() -> MCPStreamableHTTPTool:
+def make_bug_log_mcp() -> _FilteredMCPTool:
     """Create a Bug Log MCP tool (port 8102) — error and repair recording."""
-    return MCPStreamableHTTPTool(
+    return _FilteredMCPTool(
         name="bug_log_mcp",
         url=settings.bug_log_mcp_url,
         tool_name_prefix="buglog",
