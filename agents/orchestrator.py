@@ -257,8 +257,8 @@ class PipelineOrchestrator:
             prompt=prompt,
             session_state=session_state,
             run_id=run_id,
-            tracking_mcp_client=self._tracking_mcp,
-            ds_tools_mcp_client=self._ds_tools_mcp,
+            tracking_mcp_client=None,  # direct call_tool on MCPTool without active session fails
+            ds_tools_mcp_client=None,  # use local criteria fallback (always available, no session needed)
             max_iterations=self._max_iterations,
         )
 
@@ -277,8 +277,10 @@ class PipelineOrchestrator:
         self, stage_name: str, session_state: dict[str, Any]
     ) -> str:
         """Use the LLM prompt generator to create a tailored stage prompt."""
+        run_id = session_state.get("run_id", "")
         context = {
             "stage_name": stage_name,
+            "run_id": run_id,
             "task_description": session_state.get("task_description", ""),
             "pipeline_variant": session_state.get("pipeline_variant", ""),
             "relevant_state_keys": {
@@ -291,21 +293,28 @@ class PipelineOrchestrator:
         }
         request = (
             f"Generate a prompt for the '{stage_name}' pipeline stage.\n"
+            f"IMPORTANT: The run_id for this pipeline run is '{run_id}'. "
+            f"Use this exact value wherever run_id is needed in tool calls or file paths.\n"
             f"Context: {json.dumps(context, default=str)}"
         )
         try:
             response = await self._prompt_gen.run(
                 request,
-                function_invocation_kwargs={"run_id": session_state.get("run_id", ""), "session_state": session_state},
+                function_invocation_kwargs={"run_id": run_id, "session_state": session_state},
             )
             prompt_text = response.text.strip()
             if prompt_text:
-                return prompt_text
+                # Prepend run_id reminder so LLM agents never use placeholders
+                return (
+                    f"[Pipeline run_id: {run_id}]\n\n"
+                    + prompt_text
+                )
         except Exception as exc:
             logger.warning("orchestrator.prompt_gen_error: %s", exc)
 
         # Fallback: generic stage prompt
         return (
+            f"[Pipeline run_id: {run_id}]\n\n"
             f"Execute the '{stage_name}' stage of the ML pipeline.\n"
             f"Task: {session_state.get('task_description', '')}\n"
             f"Input file: {session_state.get('input_artefact_path', '')}\n"
