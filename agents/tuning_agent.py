@@ -61,10 +61,15 @@ study.optimize(objective, n_trials=N_TRIALS, timeout=TIME_BUDGET_SECONDS)
 ```
 
 3. Retrain the model with best params on the full training set.
-4. Overwrite `data/artefacts/{run_id}/model/model.pkl` with the tuned model.
-5. Save best params to `data/artefacts/{run_id}/tuning/best_params.json`.
-6. Save tuning history to `data/artefacts/{run_id}/tuning/tuning_history.csv`.
-7. Use `tracking_log_metrics` to record tuning improvement vs baseline.
+4. Save the tuned model using `ds_write_output`:
+   - sub_dir="model", filename="model.pkl" (overwrite with tuned model)
+   - Use the ACTUAL returned path as `model_artefact_path`
+5. Save best params using `ds_write_output`:
+   - sub_dir="tuning", filename="best_params.json"
+   - Use the ACTUAL returned path as `best_params_path`
+6. Save tuning history using `ds_write_output`:
+   - sub_dir="tuning", filename="tuning_history.csv"
+7. Use `ds_log_metrics` to record tuning improvement vs baseline.
 8. Update session state:
    - `best_params_path`  : path to best_params.json
    - `tuning_metrics`    : dict with best_value, n_trials_completed, improvement_pct
