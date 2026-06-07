@@ -25,6 +25,7 @@ import json
 import logging
 import os
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 from agent_framework import Agent, AgentSession, InMemoryHistoryProvider, SlidingWindowStrategy
@@ -181,8 +182,6 @@ class PipelineOrchestrator:
                 run_id=run_id,
                 task_description=task_description,
                 pipeline_variant=variant,
-                input_file=file_path,
-                file_type=detection.category,
             )
         except Exception as exc:
             logger.warning("orchestrator.tracking_start_error: %s", exc)
@@ -219,7 +218,7 @@ class PipelineOrchestrator:
                 "record_end",
                 run_id=run_id,
                 status="completed",
-                final_session_state_json=json.dumps(session_state, default=str),
+                error="",
             )
         except Exception as exc:
             logger.warning("orchestrator.tracking_end_error: %s", exc)
@@ -257,8 +256,8 @@ class PipelineOrchestrator:
             prompt=prompt,
             session_state=session_state,
             run_id=run_id,
-            tracking_mcp_client=None,  # direct call_tool on MCPTool without active session fails
-            ds_tools_mcp_client=None,  # use local criteria fallback (always available, no session needed)
+            tracking_mcp_client=self._tracking_mcp,
+            ds_tools_mcp_client=self._ds_tools_mcp,
             max_iterations=self._max_iterations,
         )
 
@@ -354,11 +353,13 @@ class PipelineOrchestrator:
             # Record bug in Bug Log MCP
             await self._bug_log_mcp.call_tool(
                 "record_bug",
+                bug_id=f"{run_id}:{stage_name}:{datetime.now(timezone.utc).isoformat()}",
                 run_id=run_id,
                 stage_name=stage_name,
+                error_type="RalphLoopVerificationFailure",
                 error_message=str(escalation.get("last_failures", "")),
-                error_severity="high",
-                debug_agent_response=debug_response.text[:2000],
+                traceback=debug_response.text[:2000],
+                library_name="",
             )
         except Exception as exc:
             logger.error("orchestrator.debug_agent_error: %s", exc)
