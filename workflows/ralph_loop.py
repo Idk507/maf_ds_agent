@@ -57,6 +57,42 @@ def _extract_done_stage(text: str) -> str | None:
     return m.group(1).lower() if m else None
 
 
+def _mcp_result_text(result: Any) -> str:
+    """Extract text from common MCP tool response shapes."""
+    if isinstance(result, str):
+        return result
+    if isinstance(result, list) and result:
+        first = result[0]
+        if isinstance(first, dict) and isinstance(first.get("text"), str):
+            return first["text"]
+        text = getattr(first, "text", None)
+        if isinstance(text, str):
+            return text
+    if isinstance(result, dict):
+        if isinstance(result.get("text"), str):
+            return result["text"]
+        content = result.get("content")
+        if isinstance(content, list) and content:
+            first = content[0]
+            if isinstance(first, dict) and isinstance(first.get("text"), str):
+                return first["text"]
+            text = getattr(first, "text", None)
+            if isinstance(text, str):
+                return text
+    content = getattr(result, "content", None)
+    if isinstance(content, list) and content:
+        first = content[0]
+        if isinstance(first, dict) and isinstance(first.get("text"), str):
+            return first["text"]
+        text = getattr(first, "text", None)
+        if isinstance(text, str):
+            return text
+    text = getattr(result, "text", None)
+    if isinstance(text, str):
+        return text
+    return str(result)
+
+
 async def run_ralph_loop(
     agent: Any,
     stage_name: str,
@@ -272,7 +308,7 @@ async def _verify_stage(
                 stage_name=stage_name,
                 session_state_json=json.dumps(session_state),
             )
-            result_text = result if isinstance(result, str) else str(result)
+            result_text = _mcp_result_text(result)
             parsed = json.loads(result_text)
             return parsed.get("failures", [])
         except Exception as exc:
