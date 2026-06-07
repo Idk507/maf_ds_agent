@@ -43,10 +43,11 @@ Your task is to:
       - Regression: RMSE (lower is better)
       - Clustering: Silhouette score
 4. Re-train the winner on the full training set (no CV leakage).
-5. Save the trained model:
-   - `data/artefacts/{run_id}/model/model.pkl` (joblib)
-   - `data/artefacts/{run_id}/model/model.onnx` (ONNX export)
-6. Use `tracking_log_metrics` to record baseline_metrics.
+5. Save the trained model using `ds_write_output`:
+   - sub_dir="model", filename="model.pkl" (joblib serialization)
+   - Attempt ONNX export: sub_dir="model", filename="model.onnx"
+   - Use the ACTUAL paths returned by ds_write_output in session_state
+6. Use `ds_log_metrics` to record baseline_metrics.
 7. Update session state:
    - `model_artefact_path`  : path to .pkl model
    - `model_type`           : algorithm name string
