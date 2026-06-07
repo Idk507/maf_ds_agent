@@ -12,8 +12,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir \
-        fastmcp \
-        fastapi \
+        mcp==1.26.0 \
+        starlette \
         "uvicorn[standard]" \
         python-dotenv \
         pydantic-settings \
