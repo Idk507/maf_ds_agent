@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import os
 import sqlite3
-from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated
@@ -105,11 +104,21 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _ensure_run(conn: sqlite3.Connection, run_id: str) -> None:
+    """Ensure a pipeline_run row exists so FK constraints don't fail.
+    Called lazily by any tool that writes to FK-dependent tables.
+    """
+    conn.execute(
+        "INSERT OR IGNORE INTO pipeline_runs (run_id, task, variant, status, started_at) VALUES (?,?,?,?,?)",
+        (run_id, "auto-created", "unknown", "running", _now()),
+    )
+
 @mcp.tool()
 async def record_start(
     run_id: Annotated[str, Field(description="Unique pipeline run identifier.")],
     task_description: Annotated[str, Field(description="Human-readable description of the task.")],
     pipeline_variant: Annotated[str, Field(description="Pipeline variant: tabular, document_text, image, existing_model.")],
+    stage_name: Annotated[str, Field(description="Pipeline stage (ignored by this tool).")] = "",
 ) -> str:
     """Record the start of a pipeline run."""
     conn = _get_conn()
@@ -127,6 +136,7 @@ async def record_end(
     run_id: Annotated[str, Field(description="Pipeline run identifier.")],
     status: Annotated[str, Field(description="Final status: success or failed.")],
     error: Annotated[str, Field(description="Error message if status is failed, otherwise empty string.")] = "",
+    stage_name: Annotated[str, Field(description="Pipeline stage (ignored by this tool).")] = "",
 ) -> str:
     """Record the end of a pipeline run."""
     conn = _get_conn()
@@ -149,6 +159,7 @@ async def record_checkpoint(
 ) -> str:
     """Record a stage verification checkpoint."""
     conn = _get_conn()
+    _ensure_run(conn, run_id)
     conn.execute(
         "INSERT INTO checkpoints (run_id, stage_name, iteration, status, notes, created_at) VALUES (?,?,?,?,?,?)",
         (run_id, stage_name, iteration, status, notes, _now()),
@@ -168,6 +179,7 @@ async def record_artefact(
 ) -> str:
     """Record a produced artefact."""
     conn = _get_conn()
+    _ensure_run(conn, run_id)
     conn.execute(
         "INSERT INTO artefacts (run_id, stage_name, name, path, size_bytes, created_at) VALUES (?,?,?,?,?,?)",
         (run_id, stage_name, name, path, size_bytes, _now()),
@@ -186,6 +198,7 @@ async def record_metric(
 ) -> str:
     """Record a performance metric for a stage."""
     conn = _get_conn()
+    _ensure_run(conn, run_id)
     conn.execute(
         "INSERT INTO metrics (run_id, stage_name, metric_name, metric_value, created_at) VALUES (?,?,?,?,?)",
         (run_id, stage_name, metric_name, metric_value, _now()),
@@ -201,9 +214,11 @@ async def record_lineage(
     from_stage: Annotated[str, Field(description="Source stage name.")],
     to_stage: Annotated[str, Field(description="Consuming stage name.")],
     artefact_name: Annotated[str, Field(description="Artefact passed between stages.")],
+    stage_name: Annotated[str, Field(description="Pipeline stage (ignored by this tool).")] = "",
 ) -> str:
     """Record data lineage between two stages."""
     conn = _get_conn()
+    _ensure_run(conn, run_id)
     conn.execute(
         "INSERT INTO lineage (run_id, from_stage, to_stage, artefact_name, created_at) VALUES (?,?,?,?,?)",
         (run_id, from_stage, to_stage, artefact_name, _now()),
@@ -216,6 +231,7 @@ async def record_lineage(
 @mcp.tool()
 async def query_run(
     run_id: Annotated[str, Field(description="Pipeline run identifier.")],
+    stage_name: Annotated[str, Field(description="Pipeline stage (ignored by this tool).")] = "",
 ) -> str:
     """Return full details of a specific run."""
     conn = _get_conn()
@@ -229,6 +245,7 @@ async def query_run(
 @mcp.tool()
 async def query_artefacts(
     run_id: Annotated[str, Field(description="Pipeline run identifier.")],
+    stage_name: Annotated[str, Field(description="Pipeline stage (ignored by this tool).")] = "",
 ) -> str:
     """Return all artefacts for a run."""
     conn = _get_conn()
@@ -257,6 +274,7 @@ async def query_metrics(
 @mcp.tool()
 async def query_lineage(
     run_id: Annotated[str, Field(description="Pipeline run identifier.")],
+    stage_name: Annotated[str, Field(description="Pipeline stage (ignored by this tool).")] = "",
 ) -> str:
     """Return full lineage graph for a run."""
     conn = _get_conn()
@@ -268,6 +286,8 @@ async def query_lineage(
 @mcp.tool()
 async def list_runs(
     limit: Annotated[int, Field(description="Maximum number of runs to return.")] = 20,
+    run_id: Annotated[str, Field(description="Pipeline run identifier (ignored by this tool).")] = "",
+    stage_name: Annotated[str, Field(description="Pipeline stage (ignored by this tool).")] = "",
 ) -> str:
     """List the most recent pipeline runs."""
     conn = _get_conn()
@@ -280,16 +300,10 @@ async def list_runs(
 
 
 # ── FastAPI Application ─────────────────────────────────────────────
+# mcp_app must be created before FastAPI so its lifespan can be used.
 
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    async with mcp._lifespan_manager():
-        yield
-
-
-app = FastAPI(title="Tracking MCP Server", lifespan=lifespan)
 mcp_app = mcp.http_app(transport="streamable-http", stateless_http=False)
+app = FastAPI(title="Tracking MCP Server", lifespan=mcp_app.lifespan)
 app.mount("/mcp", mcp_app)
 
 
