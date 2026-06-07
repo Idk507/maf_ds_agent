@@ -1,0 +1,1 @@
+[{"column": "all", "action": "remove_duplicates", "reason": "Exact duplicates", "rows_affected": 0}, {"column": "C:\\Users\\dhanu\\Downloads\\maf_ds_agent\\data\\titanic.csv", "action": "drop_column", "reason": "Missing >= 50%", "rows_affected": 0}]
