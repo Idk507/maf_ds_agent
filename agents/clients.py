@@ -23,13 +23,28 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-def _make_client(deployment_env_key: str) -> OpenAIChatCompletionClient:
-    """Construct an OpenAIChatCompletionClient (Azure routing) for the given deployment."""
-    endpoint = os.environ["AI_FOUNDRY_PROJECT_ENDPOINT"]
-    deployment = os.environ[deployment_env_key]
-    api_version = os.environ.get("AI_FOUNDRY_API_VERSION", "2024-12-01-preview")
-    api_key = os.environ.get("AI_FOUNDRY_API_KEY")
+def _resolve_deployment(primary_key: str) -> str:
+    """Resolve deployment name from primary env var or fall back to AI_FOUNDRY_DEPLOYMENT_NAME."""
+    return (
+        os.environ.get(primary_key)
+        or os.environ.get("AI_FOUNDRY_DEPLOYMENT_NAME")
+        or "gpt-4o"
+    )
 
+
+def _make_client(deployment_env_key: str) -> OpenAIChatCompletionClient:
+    """Construct an OpenAIChatCompletionClient (Azure routing) for the given deployment.
+
+    Supports both legacy Azure OpenAI (*.openai.azure.com) and Azure AI Foundry
+    (*.services.ai.azure.com) endpoint formats.
+    """
+    endpoint = os.environ["AI_FOUNDRY_PROJECT_ENDPOINT"].strip().rstrip("/")
+    deployment = _resolve_deployment(deployment_env_key)
+    api_version = os.environ.get("AI_FOUNDRY_API_VERSION", "2024-12-01-preview").strip()
+    api_key = os.environ.get("AI_FOUNDRY_API_KEY", "").strip() or None
+
+    # Azure AI Foundry (services.ai.azure.com) exposes the OpenAI-compatible API
+    # under the same /openai/deployments/… path as classic Azure OpenAI.
     if api_key:
         return OpenAIChatCompletionClient(
             model=deployment,
