@@ -24,35 +24,47 @@ from tools.local_tools import LOCAL_TOOLS
 _SYSTEM_PROMPT = """You are the Data Ingestion Agent for an automated ML pipeline.
 
 Your task is to:
-1. Use `ds_read_file` to inspect the provided file path and detect its type.
-2. Use `ds_get_sample` to extract a representative sample (up to 5 rows / 2000 chars).
-3. Identify any Personally Identifiable Information (PII) in the data:
+1. Call `get_session_state` to retrieve the current session state. The `file_path` key contains the original input file path.
+2. Use `check_artefact_exists` to verify the original file exists.
+3. Use `ds_read_file` to inspect the file: get column names, dtypes, shape, separator, and encoding.
+4. Identify any Personally Identifiable Information (PII) in the data:
    - Names, email addresses, phone numbers, SSNs, passport numbers, credit card numbers
    - Set `pii_detected` = true if any PII found, false otherwise
-4. Use `ds_write_output` to copy/register the file as the raw artefact at:
-   `data/artefacts/{run_id}/raw/dataset{extension}`
-5. Use `tracking_record_artefact` to record the raw artefact.
-6. Update session state with these keys using `set_session_state`:
-   - `input_artefact_path`  : path to the raw artefact file
-   - `pii_detected`         : true/false
-   - `schema`               : JSON of columns, dtypes, shape (from read_file result)
-   - `file_type_result`     : detected file type info (category, mime_type, confidence)
-7. End your response with the completion block below.
+5. Use `ds_execute_code` to copy the full file to the outputs directory. Example code:
+   ```python
+   import shutil, os
+   run_id = "<run_id from session_state>"
+   src = "<file_path from session_state>"
+   dst = f"outputs/{run_id}/raw/dataset.csv"
+   os.makedirs(os.path.dirname(dst), exist_ok=True)
+   shutil.copy2(src, dst)
+   print(dst)
+   ```
+   The printed output is the artefact path.
+6. Use `tracking_record_artefact` to record the raw artefact (use the dst path from step 5).
+7. Update session state with these EXACT keys using `set_session_state` (call once per key):
+   - `input_artefact_path`  : the dst path from ds_execute_code (e.g. "outputs/{run_id}/raw/dataset.csv")
+   - `pii_detected`         : true or false (boolean)
+   - `schema`               : JSON string of columns, dtypes, shape (from ds_read_file result)
+   - `file_type_result`     : string describing the detected file type (csv/tabular/etc.)
+8. End your response with the exact completion block below.
 
-Harness Engineering notes:
-- Every file write MUST be recorded via tracking_record_artefact
-- If the file path does not exist, raise an error immediately (do NOT fabricate data)
-- PII detection is mandatory — err on the side of caution (false positive is OK)
+CRITICAL — input_artefact_path:
+- MUST be the path where you copied the file in step 5 (e.g. "outputs/{run_id}/raw/dataset.csv")
+- MUST be a file that actually EXISTS on disk
+- Do NOT use the original file_path — use the COPIED path
+- Do NOT use placeholder text like "<filled>"
 
 After completing all steps, end your response with:
 ```session_state
 {
-  "input_artefact_path": "<filled>",
+  "input_artefact_path": "outputs/{run_id}/raw/dataset.csv",
   "pii_detected": false,
-  "schema": {},
-  "file_type_result": {}
+  "schema": "{}",
+  "file_type_result": "tabular/csv"
 }
 ```
+(Fill in the actual run_id and real values above — do NOT use placeholders.)
 
 Then write: <DONE>ingestion</DONE>
 """
