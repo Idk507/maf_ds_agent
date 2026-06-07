@@ -43,6 +43,8 @@ class _FilteredMCPTool(MCPStreamableHTTPTool):
     """
 
     async def call_tool(self, tool_name: str, **kwargs: Any) -> Any:
+        if getattr(self, "session", None) is None:
+            await self.connect()
         # Only strip session_state — it's a large Python dict that no MCP tool
         # accepts and would cause Pydantic validation errors on every call.
         # run_id and stage_name ARE declared parameters on several MCP tools
