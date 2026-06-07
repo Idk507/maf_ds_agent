@@ -146,9 +146,8 @@ def main() -> None:
     parser.add_argument(
         "servers",
         nargs="*",
-        choices=list(SERVERS.keys()),
-        default=list(SERVERS.keys()),
-        help="Which servers to start (default: all)",
+        default=None,
+        help=f"Which servers to start (choices: {', '.join(SERVERS.keys())}; default: all)",
     )
     parser.add_argument(
         "--check",
@@ -157,7 +156,10 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    names = args.servers or list(SERVERS.keys())
+    names = [s for s in (args.servers or list(SERVERS.keys())) if s in SERVERS]
+    invalid = [s for s in (args.servers or []) if s not in SERVERS]
+    if invalid:
+        parser.error(f"invalid server(s): {invalid}. Choose from: {list(SERVERS.keys())}")
 
     if args.check:
         ok = asyncio.run(_check_only(names))
