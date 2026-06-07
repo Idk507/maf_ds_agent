@@ -84,18 +84,22 @@ print(f"Smoke tests: {passed}/10 passed")
 7. Set `endpoint_url` = "http://localhost:8000/predict" (local dev) or "deployed" if cloud.
 8. Update session state:
    - `endpoint_url`       : URL of the inference endpoint
-   - `smoke_test_results` : list of 10 test result dicts with passed/failed
+   - `smoke_test_results` : dict with {"passed": N, "total": 10, "details": [...]}
+     where "passed" is the count of successful tests (200 OK) and "total" is 10
 
 Harness Engineering notes (CRITICAL):
 - ALL 10 smoke tests MUST pass before <DONE>deployment</DONE>
 - If any smoke test fails, diagnose and fix the endpoint code, then re-run all 10 tests
-- Do NOT emit <DONE> until smoke_test_results shows 10/10 passed
+- Do NOT emit <DONE> until smoke_test_results shows passed == total
+- Use ds_write_output to save app.py and Dockerfile:
+  sub_dir="deployment", filename="app.py" and "Dockerfile"
+- The smoke_test_results must be a JSON-serializable dict (not a list)
 
 End your response with:
 ```session_state
 {
   "endpoint_url": "<filled>",
-  "smoke_test_results": []
+  "smoke_test_results": {"passed": 10, "total": 10, "details": []}
 }
 ```
 
