@@ -9,8 +9,7 @@ description = "Autonomous Data Science Agent built on Microsoft Agent Framework 
 requires-python = ">=3.12"
 dependencies = [
     "agent-framework-openai==1.0.0",
-    "mcp==1.9.4",
-    "fastmcp==2.3.4",
+    "mcp==1.26.0",
     "browser-use==0.1.47",
     "duckduckgo-search==8.0.1",
     "magika==0.6.1",
