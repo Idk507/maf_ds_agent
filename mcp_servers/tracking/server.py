@@ -8,8 +8,6 @@ Stateful (stateless_http=False). Maintains SQLite WAL for run audit trail.
 
 MCP URL: http://localhost:8100/mcp/mcp
 """
-from __future__ import annotations
-
 import os
 import sqlite3
 from datetime import datetime, timezone
@@ -17,9 +15,11 @@ from pathlib import Path
 from typing import Annotated
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
-from fastmcp import FastMCP
+from mcp.server.fastmcp import FastMCP
 from pydantic import Field
+from starlette.applications import Starlette
+from starlette.responses import JSONResponse, Response
+from starlette.routing import Mount, Route
 
 load_dotenv()
 
@@ -97,7 +97,7 @@ _init_db()
 
 # ── FastMCP Server ──────────────────────────────────────────────────
 
-mcp = FastMCP("TrackingMCP")
+mcp = FastMCP("TrackingMCP", stateless_http=False)
 
 
 def _now() -> str:
@@ -299,23 +299,28 @@ async def list_runs(
     return str([dict(r) for r in rows])
 
 
-# ── FastAPI Application ─────────────────────────────────────────────
-# mcp_app must be created before FastAPI so its lifespan can be used.
+# ── Starlette Application ───────────────────────────────────────────
+# mcp_app must be created before Starlette so its lifespan can be reused.
 
-mcp_app = mcp.http_app(transport="streamable-http", stateless_http=False)
-app = FastAPI(title="Tracking MCP Server", lifespan=mcp_app.lifespan)
-app.mount("/mcp", mcp_app)
+mcp_app = mcp.streamable_http_app()
 
 
-@app.get("/health")
-async def health() -> dict:
-    return {"status": "healthy", "server": "tracking", "port": PORT}
+async def health(request) -> JSONResponse:
+    return JSONResponse({"status": "healthy", "server": "tracking", "port": PORT})
 
 
-@app.head("/health")
-async def health_head():
-    from fastapi.responses import Response
+async def health_head(request) -> Response:
     return Response(status_code=200)
+
+
+app = Starlette(
+    routes=[
+        Mount("/mcp", app=mcp_app),
+        Route("/health", health, methods=["GET"]),
+        Route("/health", health_head, methods=["HEAD"]),
+    ],
+    lifespan=mcp_app.router.lifespan_context,
+)
 
 
 if __name__ == "__main__":
