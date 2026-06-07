@@ -72,13 +72,13 @@ async def _wait_healthy(name: str, port: int, timeout: float = 30.0) -> bool:
             try:
                 r = await client.get(url)
                 if r.status_code == 200:
-                    print(f"  ✓ {name} healthy on port {port}")
+                    print(f"  [OK] {name} healthy on port {port}")
                     return True
             except Exception:
                 pass
             await asyncio.sleep(delay)
             delay = min(delay * 1.5, 5.0)
-    print(f"  ✗ {name} failed to become healthy within {timeout}s", file=sys.stderr)
+    print(f"  [FAIL] {name} failed to become healthy within {timeout}s", file=sys.stderr)
     return False
 
 
@@ -101,7 +101,7 @@ async def _start_servers(names: list[str]) -> None:
     for name in names:
         cfg = SERVERS[name]
         cmd = _build_cmd(name, cfg)
-        print(f"  → {name} on port {cfg['port']}")
+        print(f"  -> {name} on port {cfg['port']}")
         proc = subprocess.Popen(
             cmd,
             cwd=str(ROOT),
